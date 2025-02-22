@@ -1,101 +1,74 @@
-import math
 import copy
-
-import board
+import random
 from move_validator import MoveValidator
 
-piece_values = {
-    "King": 10000, "Rook": 500, "Cannon": 400, "Knight": 300,
-    "Elephant": 200, "Advisor": 150, "Pawn": 100
-}
+class ChessAI:
+    def __init__(self, is_red):
+        self.is_red = is_red  # AI là bên Đỏ hay Đen
 
-def evaluate_board(black_pieces, red_pieces):
-    """Đánh giá bàn cờ (giá trị cao hơn là lợi thế cho AI)"""
-    piece_values = {
-        "將": 10000, "車": 500, "馬": 300, "包": 400, "象": 200, "士": 150, "卒": 100,
-        "帥": -10000, "車": -500, "馬": -300, "炮": -400, "相": -200, "仕": -150, "兵": -100
-    }
-    score = 0
+    def evaluate_board(self, red_pieces, black_pieces):
+        piece_values = {"帥": 1000, "將": -1000, "車": 90, "馬": 40, "象": 20, "相": -20,
+                        "士": 10, "仕": -10, "包": 45, "炮": -45, "卒": 5, "兵": -5}
+        score = 0
+        for pos, piece in red_pieces.items():
+            score += piece_values.get(piece, 0)
+        for pos, piece in black_pieces.items():
+            score += piece_values.get(piece, 0)
+        return score
 
-    for pos, piece in black_pieces.items():
-        score += piece_values.get(piece, 0)
+    def minimax(self, red_pieces, black_pieces, depth, alpha, beta, maximizing):
+        if depth == 0:
+            return self.evaluate_board(red_pieces, black_pieces), None
 
-    for pos, piece in red_pieces.items():
-        score += piece_values.get(piece, 0)
+        best_move = None
+        current_pieces = red_pieces if maximizing else black_pieces
+        other_pieces = black_pieces if maximizing else red_pieces
 
-    return score
+        best_value = float('-inf') if maximizing else float('inf')
 
-def minimax(black_pieces, red_pieces, depth, alpha, beta, maximizing):
-    """Thuật toán Minimax có cắt tỉa Alpha-Beta"""
-    if depth == 0:
-        return evaluate_board(black_pieces, red_pieces)
+        for pos, piece in list(current_pieces.items()):
+            valid_moves = MoveValidator.generate_valid_moves(piece, pos, current_pieces, other_pieces)
 
-    if maximizing:
-        max_eval = -math.inf
-        for move in get_all_moves(black_pieces, "black", red_pieces):  # Truyền đủ 3 tham số
-            temp_black = copy.deepcopy(black_pieces)
-            temp_red = copy.deepcopy(red_pieces)
+            for new_pos in valid_moves:
+                # Kiểm tra xem new_pos có quân cùng màu không
+                if new_pos in current_pieces:
+                    continue  # Bỏ qua nước đi này
 
-            if move[1] in temp_red:  # Nếu ăn quân
-                del temp_red[move[1]]
+                new_current = copy.deepcopy(current_pieces)
+                new_other = copy.deepcopy(other_pieces)
 
-            temp_black[move[1]] = temp_black.pop(move[0])
+                # Di chuyển quân
+                new_current[new_pos] = new_current.pop(pos)
 
-            eval = minimax(temp_black, temp_red, depth - 1, alpha, beta, False)
-            max_eval = max(max_eval, eval)
-            alpha = max(alpha, eval)
-            if beta <= alpha:
-                break
-        return max_eval
-    else:
-        min_eval = math.inf
-        for move in get_all_moves(red_pieces, "red", black_pieces):  # Truyền đủ 3 tham số
-            temp_black = copy.deepcopy(black_pieces)
-            temp_red = copy.deepcopy(red_pieces)
+                # Nếu ăn quân đối phương
+                if new_pos in new_other:
+                    new_other.pop(new_pos)
 
-            if move[1] in temp_black:
-                del temp_black[move[1]]
+                value, _ = self.minimax(
+                    new_current if maximizing else new_other,
+                    new_other if maximizing else new_current,
+                    depth - 1, alpha, beta, not maximizing
+                )
 
-            temp_red[move[1]] = temp_red.pop(move[0])
+                if maximizing and value > best_value:
+                    best_value, best_move = value, (pos, new_pos)
+                    alpha = max(alpha, value)
+                elif not maximizing and value < best_value:
+                    best_value, best_move = value, (pos, new_pos)
+                    beta = min(beta, value)
 
-            eval = minimax(temp_black, temp_red, depth - 1, alpha, beta, True)
-            min_eval = min(min_eval, eval)
-            beta = min(beta, eval)
-            if beta <= alpha:
-                break
-        return min_eval
+                if beta <= alpha:
+                    break
 
-def get_all_moves(pieces, color, other_pieces):
-    """Lấy tất cả nước đi hợp lệ của một màu quân"""
-    moves = []
-    for pos, piece in pieces.items():
-        if (color == "black" and piece in ["將", "車", "馬", "包", "象", "士", "卒"]) or \
-           (color == "red" and piece in ["帥", "車", "馬", "炮", "相", "仕", "兵"]):
-            for x in range(9):
-                for y in range(10):
-                    if MoveValidator.is_valid_move(piece, pos, (x, y), pieces, other_pieces):
-                        moves.append((pos, x, y))
-    return moves
+        return best_value, best_move
 
-def get_best_move(black_pieces, red_pieces, depth=3):
-    """Tìm nước đi tốt nhất cho AI (quân Đen)"""
-    best_move = None
-    best_value = -math.inf
-
-    for move in get_all_moves(black_pieces, "black", red_pieces):
-        temp_black = copy.deepcopy(black_pieces)
-        temp_red = copy.deepcopy(red_pieces)
-
-        if move[1] in temp_red:  # Nếu ăn quân
-            del temp_red[move[1]]
-
-        temp_black[move[1]] = temp_black.pop(move[0])
-
-        move_value = minimax(temp_black, temp_red, depth - 1, -math.inf, math.inf, False)
-
-        if move_value > best_value:
-            best_value = move_value
-            best_move = move
-
-    return best_move
-
+    def get_best_move(self, red_pieces, black_pieces, depth=3):
+        _, best_move = self.minimax(
+            red_pieces,
+            black_pieces,
+            depth,
+            float('-inf'),
+            float('inf'),
+            self.is_red  # Đã sửa từ not self.is_red → self.is_red
+        )
+        return best_move

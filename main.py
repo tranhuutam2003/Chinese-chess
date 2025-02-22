@@ -1,39 +1,37 @@
 import pygame
 import config
+from ai import ChessAI
 from pieces import PieceData
 from move_validator import MoveValidator
 from board import GameBoard
 from timer_manager import TimerManager
-from captured_pieces import CapturedPieces  # Import lớp mới
+from captured_pieces import CapturedPieces
 
-# Thời gian tối đa cho mỗi bên (tính bằng giây)
-MAX_TIME = 600  # 10 phút
+
 
 def main():
     pygame.init()
-
-    # Cấu hình màn hình
     screen = pygame.display.set_mode((config.SCREEN_WIDTH, config.SCREEN_HEIGHT), pygame.RESIZABLE)
     pygame.display.set_caption("Cờ Tướng")
 
-    # Khởi tạo các thành phần trò chơi
     board = GameBoard(screen)
-    timer_manager = TimerManager(MAX_TIME)  # Quản lý thời gian
-    captured_pieces = CapturedPieces(screen)  # Quản lý quân bị ăn
+    timer_manager = TimerManager(600)  # 10 phút
+    captured_pieces = CapturedPieces(screen)
     black_pieces, red_pieces = PieceData.get_initial_pieces()
 
-    red_turn = True  # Lượt chơi đầu tiên là của bên Đỏ
+    # Khởi tạo AI cho bên đen
+    ai = ChessAI(is_red=False)
+
+    red_turn = True
     selected_piece = None
     valid_moves = []
 
     running = True
     while running:
-        # Cập nhật thời gian mỗi vòng lặp
         timer_manager.update_timers()
         red_time, black_time = timer_manager.get_times()
-        captured_pieces.draw_captured_pieces()
 
-        # Kiểm tra nếu hết thời gian
+        # Kiểm tra hết giờ
         if red_time <= 0:
             print("Bên Đen thắng do bên Đỏ hết thời gian!")
             running = False
@@ -41,7 +39,32 @@ def main():
             print("Bên Đỏ thắng do bên Đen hết thời gian!")
             running = False
 
-        # Xử lý sự kiện
+        # Lượt của AI (bên đen)
+        if not red_turn and running:
+            pygame.time.delay(500)  # Tạo độ trễ giúp người chơi dễ theo dõi
+            move = ai.get_best_move(red_pieces, black_pieces)
+
+            if move:
+                start_pos, end_pos = move
+
+                # Kiểm tra xem start_pos có tồn tại trong black_pieces không
+                if start_pos not in black_pieces:
+                    print(f"AI chọn nước đi không hợp lệ: {start_pos} -> {end_pos}")
+                    continue  # Bỏ qua nước đi này và thử lại trong vòng lặp tiếp theo
+
+                # Nếu AI ăn quân
+                if end_pos in red_pieces:
+                    captured_piece = red_pieces.pop(end_pos)
+                    captured_pieces.add_captured_piece(captured_piece, False)
+
+                    if captured_piece == "帥":  # Nếu ăn tướng đỏ
+                        print("Bên Đen thắng!")
+                        running = False
+
+                black_pieces[end_pos] = black_pieces.pop(start_pos)
+                red_turn = True
+                timer_manager.switch_turn()
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
@@ -73,7 +96,7 @@ def main():
                         captured_piece = other_pieces.pop((grid_x, grid_y))
                         captured_pieces.add_captured_piece(captured_piece, red_turn)
 
-                    # Kiểm tra nếu vua bị ăn
+                        # Kiểm tra nếu vua bị ăn
                         if captured_piece in ["將", "帥"]:
                             if captured_piece == "將":
                                 print("Bên Đỏ thắng! Vua Đen bị ăn.")
@@ -92,17 +115,15 @@ def main():
                     selected_piece = None
                     valid_moves = []
 
-        # Vẽ giao diện (đặt ngoài vòng lặp sự kiện để luôn cập nhật)
         board.draw_board(black_pieces, red_pieces, valid_moves)
-        captured_pieces.draw_captured_pieces()  # Vẽ quân cờ bị ăn
-        board.draw_timer(red_time, black_time)  # Chỉ hiển thị thời gian
-
+        captured_pieces.draw_captured_pieces()
+        board.draw_timer(red_time, black_time)
         pygame.display.flip()
 
-        # Thêm độ trễ nhỏ để tránh CPU chạy vòng lặp quá nhanh
         pygame.time.delay(50)
 
     pygame.quit()
+
 
 if __name__ == "__main__":
     main()
